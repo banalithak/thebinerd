@@ -109,6 +109,17 @@ jobs:
           # Wait for server to be ready
           sleep 5
           
+          # Wait for Cloudflare Tunnel to be globally resolvable
+          echo "Waiting for tunnel DNS to propagate..."
+          TUNNEL_HOST=$(echo "$FUNNEL_URL" | sed 's|https://||')
+          for i in $(seq 1 30); do
+            if nslookup "$TUNNEL_HOST" > /dev/null 2>&1; then
+              echo "Tunnel DNS resolved after ~$((i * 2)) seconds"
+              break
+            fi
+            sleep 2
+          done
+          
           # Register Telegram webhook (if bot token is configured)
           if grep -q "^TELEGRAM_BOT_TOKEN=[^[:space:]]" .env 2>/dev/null; then
             BOT_TOKEN=$(grep "^TELEGRAM_BOT_TOKEN=" .env | cut -d= -f2-)
@@ -120,12 +131,19 @@ jobs:
             # Delete existing webhook first (Telegram ignores secret_token changes if URL unchanged)
             curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/deleteWebhook" > /dev/null
             
-            # Set new webhook with secret
-            RESULT=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
-              -H "Content-Type: application/json" \
-              -d "{\"url\": \"${WEBHOOK_URL}\", \"secret_token\": \"${TG_WEBHOOK_SECRET}\"}")
-            
-            echo "Telegram webhook registration: $RESULT"
+            # Retry webhook registration (Telegram validates the URL resolves)
+            for i in $(seq 1 5); do
+              RESULT=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+                -H "Content-Type: application/json" \
+                -d "{\"url\": \"${WEBHOOK_URL}\", \"secret_token\": \"${TG_WEBHOOK_SECRET}\"}")
+              
+              echo "Telegram webhook registration (attempt $i): $RESULT"
+              
+              if echo "$RESULT" | grep -q '"ok":true'; then
+                break
+              fi
+              sleep 10
+            done
           else
             echo "No TELEGRAM_BOT_TOKEN configured, skipping webhook registration"
           fi
