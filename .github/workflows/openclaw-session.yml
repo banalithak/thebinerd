@@ -19,7 +19,7 @@ on:
     types: [chain-openclaw]
 
 env:
-  CHAIN_TRIGGER_MINUTES: 335
+  CHAIN_TRIGGER_MINUTES: 345
   SAVE_INTERVAL_MINUTES: 60
   OPENCLAW_PORT: 18789
 
@@ -124,8 +124,10 @@ jobs:
 
           # Inject openclaw.json from secret
           if [ -n "$OPENCLAW_CONFIG" ]; then
-            # Fix paths: replace any Windows user paths with Linux home
+            # Fix paths: replace any Windows user paths with Linux home, then convert remaining backslashes to forward slashes in paths
             CONFIG=$(echo "$OPENCLAW_CONFIG" | sed "s|C:\\\\\\\\Users\\\\\\\\[^\\\\\"]*|$HOME|g" | sed "s|C:/Users/[^/\"]*|$HOME|g")
+            # Convert Windows backslash paths to forward slashes (e.g. \\.openclaw\\workspace -> /.openclaw/workspace)
+            CONFIG=$(echo "$CONFIG" | sed 's|\\\\|/|g')
             echo "$CONFIG" > "$OPENCLAW_DIR/openclaw.json"
             echo "Injected openclaw.json from secret (paths fixed to $HOME)"
           else
