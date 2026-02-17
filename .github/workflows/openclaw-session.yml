@@ -112,6 +112,15 @@ jobs:
             npm install -g openclaw@latest
           fi
 
+      - name: Install Playwright and Chromium for browser control
+        run: |
+          export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+          export PATH="$HOME/.npm-global/bin:$PATH"
+
+          echo "Installing Playwright with Chromium for OpenClaw browser tool..."
+          npx playwright install --with-deps chromium
+          echo "Playwright + Chromium installed"
+
       - name: Configure OpenClaw
         env:
           OPENCLAW_CONFIG: ${{ secrets.OPENCLAW_CONFIG }}
@@ -236,6 +245,9 @@ jobs:
           export OPENCLAW_STATE_DIR="$HOME/.openclaw"
           export OPENCLAW_WORKSPACE="$HOME/.openclaw/workspace"
 
+          # Stealth: use new headless mode (harder to detect than legacy headless)
+          export PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW=1
+
           # Start OpenClaw gateway in background
           nohup openclaw gateway > /tmp/openclaw.log 2>&1 &
           OPENCLAW_PID=$!
@@ -252,6 +264,41 @@ jobs:
             echo "ERROR: OpenClaw gateway failed to start"
             cat /tmp/openclaw.log
             exit 1
+          fi
+
+      - name: Start OpenClaw managed browser
+        run: |
+          export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+          export PATH="$HOME/.npm-global/bin:$PATH"
+
+          echo "Starting OpenClaw managed browser (headless, no-sandbox)..."
+
+          # Start the openclaw browser profile
+          openclaw browser --browser-profile openclaw start 2>&1 || true
+          sleep 5
+
+          # Check browser status
+          BROWSER_STATUS=$(openclaw browser --browser-profile openclaw status 2>&1 || echo "unknown")
+          echo "Browser status: $BROWSER_STATUS"
+
+          # Verify CDP is reachable on the configured port
+          if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
+            echo "Browser CDP endpoint is reachable on port 18800"
+
+            # Apply stealth: set realistic user-agent via browser control API
+            GATEWAY_PORT=${{ env.OPENCLAW_PORT }}
+            UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            curl -sf -X POST "http://127.0.0.1:$GATEWAY_PORT/browser/set/headers?profile=openclaw" \
+              -H "Authorization: Bearer openclaw" \
+              -H "Content-Type: application/json" \
+              -d "{\"headers\":{\"User-Agent\":\"$UA\"}}" 2>/dev/null && echo "Stealth: User-Agent set" || echo "WARNING: Could not set User-Agent (non-critical)"
+
+            # Apply stealth: set realistic locale and timezone
+            openclaw browser --browser-profile openclaw set locale en-US 2>/dev/null || true
+            openclaw browser --browser-profile openclaw set timezone America/New_York 2>/dev/null || true
+            echo "Stealth: locale=en-US, timezone=America/New_York"
+          else
+            echo "WARNING: Browser CDP endpoint not reachable yet (gateway may auto-start it on first use)"
           fi
 
       - name: Display Connection Info
@@ -271,6 +318,12 @@ jobs:
           echo "OpenClaw Gateway:"
           echo "  URL:       $TUNNEL_URL"
           echo "  Local:     http://localhost:${{ env.OPENCLAW_PORT }}"
+          echo ""
+          echo "Browser (openclaw-managed):"
+          echo "  Profile:   openclaw"
+          echo "  CDP Port:  18800"
+          echo "  Headless:  true"
+          echo "  Sandbox:   disabled (CI environment)"
           echo ""
           echo "Config:      ~/.openclaw/openclaw.json"
           echo "Workspace:   ~/.openclaw/workspace"
@@ -424,6 +477,20 @@ jobs:
                 echo "  Tunnel restarted: $NEW_URL"
               else
                 echo "  WARNING: Tunnel restart may have failed"
+              fi
+            fi
+
+            # Check if OpenClaw managed browser is still reachable
+            if ! curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
+              echo "  WARNING: Browser CDP not reachable, attempting restart..."
+              export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+              export PATH="$HOME/.npm-global/bin:$PATH"
+              openclaw browser --browser-profile openclaw start 2>&1 || true
+              sleep 5
+              if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
+                echo "  Browser restarted successfully"
+              else
+                echo "  WARNING: Browser restart may have failed (gateway will retry on next tool call)"
               fi
             fi
 
