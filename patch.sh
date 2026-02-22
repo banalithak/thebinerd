@@ -116,13 +116,14 @@ fi
 # Platform: regex match any platform string after antigravity/${version}
 if grep -qF 'antigravity/${version} '"$PLATFORM" "$GEMINI_CLI"; then
     warn "google-gemini-cli: platform already $PLATFORM, skipping"
-elif grep -qP 'antigravity/\$\{version\} \S+/\S+' "$GEMINI_CLI"; then
+elif grep -qP 'antigravity/\$\{version\} [a-z]+/[a-z0-9]+' "$GEMINI_CLI"; then
     if $DRY_RUN; then
         log "[DRY RUN] Would patch: google-gemini-cli platform → $PLATFORM"
     else
-        CURRENT_PLAT=$(grep -oP 'antigravity/\$\{version\} \K\S+/\S+' "$GEMINI_CLI")
+        CURRENT_PLAT=$(grep -oP 'antigravity/\$\{version\} \K[a-z]+/[a-z0-9]+' "$GEMINI_CLI")
         cp "$GEMINI_CLI" "$GEMINI_CLI.prepatch.bak"
-        sed -i "s|antigravity/\${version} [^ ]*/[^ '\"]*|antigravity/\${version} $PLATFORM|" "$GEMINI_CLI"
+        # Use precise pattern: platform is like darwin/arm64, linux/amd64, windows/amd64
+        sed -i "s|antigravity/\${version} [a-z]*/[a-z0-9]*|antigravity/\${version} $PLATFORM|" "$GEMINI_CLI"
         log "google-gemini-cli: platform $CURRENT_PLAT → $PLATFORM"
     fi
 else
@@ -384,6 +385,50 @@ EOF
     fi
 else
     log "models.json already exists, skipping"
+fi
+
+# =============================================================================
+# 6. Validate patched JS files parse correctly
+# =============================================================================
+echo ""
+echo "Validating patched files..."
+
+VALIDATION_FAILED=false
+
+GEMINI_CLI_CHECK="$PI_AI_DIR/dist/providers/google-gemini-cli.js"
+MODELS_GEN_CHECK="$PI_AI_DIR/dist/models.generated.js"
+
+for jsfile in "$GEMINI_CLI_CHECK" "$MODELS_GEN_CHECK"; do
+    [[ -f "$jsfile" ]] || continue
+    jsname=$(basename "$jsfile")
+
+    # Detect ESM (import/export at start of file)
+    if head -5 "$jsfile" | grep -qP '^\s*(import |export )'; then
+        # ESM: pipe to node --check --input-type=module
+        if node --check --input-type=module < "$jsfile" 2>/dev/null; then
+            log "Validation OK: $jsname"
+        else
+            echo -e "${RED}[✗]${NC} Validation FAILED: $jsname"
+            node --check --input-type=module < "$jsfile" 2>&1 | head -5
+            VALIDATION_FAILED=true
+        fi
+    else
+        if node --check "$jsfile" 2>/dev/null; then
+            log "Validation OK: $jsname"
+        else
+            echo -e "${RED}[✗]${NC} Validation FAILED: $jsname"
+            node --check "$jsfile" 2>&1 | head -5
+            VALIDATION_FAILED=true
+        fi
+    fi
+done
+
+if $VALIDATION_FAILED; then
+    echo ""
+    echo -e "${RED}[✗] One or more patched files have syntax errors! OpenClaw may crash on startup.${NC}"
+    echo -e "${YELLOW}    Check the .prepatch.bak files to restore originals.${NC}"
+    echo ""
+    exit 1
 fi
 
 # =============================================================================
