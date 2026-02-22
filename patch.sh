@@ -107,10 +107,9 @@ patch_file "$GEMINI_CLI" \
     "antigravity/\${version} $PLATFORM" \
     "google-gemini-cli: platform darwin/arm64 → $PLATFORM"
 
-patch_file "$GEMINI_CLI" \
-    'daily-cloudcode-pa.sandbox.googleapis.com' \
-    'daily-cloudcode-pa.googleapis.com' \
-    "google-gemini-cli: sandbox endpoint → production"
+# NOTE: endpoint left as daily-cloudcode-pa.sandbox.googleapis.com (the working default)
+# Previously we patched this to cloudcode-pa or daily-cloudcode-pa, but the sandbox
+# endpoint is what the mjs fix scripts used when things were working.
 
 # =============================================================================
 # 2. models.generated.js — add new models
@@ -137,7 +136,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Gemini 3.1 Pro High (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
@@ -149,7 +148,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Gemini 3.1 Pro Low (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
@@ -161,7 +160,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Gemini 2.5 Pro (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
@@ -173,7 +172,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Gemini 2.5 Flash (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 0.5, output: 3, cacheRead: 0.5, cacheWrite: 0 },
@@ -185,7 +184,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Gemini 2.5 Flash Lite (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: false,
             input: ["text", "image"],
             cost: { input: 0.1, output: 0.5, cacheRead: 0.1, cacheWrite: 0 },
@@ -197,7 +196,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Gemini 2.5 Flash Thinking (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 0.5, output: 3, cacheRead: 0.5, cacheWrite: 0 },
@@ -209,7 +208,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Claude Opus 4.6 Thinking (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
@@ -221,7 +220,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "Claude Sonnet 4.6 (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: false,
             input: ["text", "image"],
             cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
@@ -233,7 +232,7 @@ new_models = '''        "gemini-3.1-pro-high": {
             name: "GPT-OSS 120B Medium (Antigravity)",
             api: "google-gemini-cli",
             provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.googleapis.com",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 2, output: 8, cacheRead: 0.2, cacheWrite: 0 },
@@ -244,15 +243,15 @@ new_models = '''        "gemini-3.1-pro-high": {
 
 content = content.replace('"google-antigravity": {\n', '"google-antigravity": {\n' + new_models, 1)
 
-# Also fix sandbox endpoint for existing models
-content = content.replace('daily-cloudcode-pa.sandbox.googleapis.com', 'daily-cloudcode-pa.googleapis.com')
+# NOTE: sandbox endpoint (daily-cloudcode-pa.sandbox.googleapis.com) is left as-is
+# for existing models — this is the working endpoint.
 
 with open(path, 'w') as f:
     f.write(content)
 
 print("OK")
 PYEOF
-        log "models.generated.js — added new models + fixed sandbox endpoint"
+        log "models.generated.js — added new models (sandbox endpoint preserved)"
     fi
 fi
 
@@ -271,11 +270,6 @@ ALL_DIST_FILES="$PI_EMBEDDED_FILES $REPLY_FILES $PLUGIN_REPLY $SUBAGENT"
 for f in $ALL_DIST_FILES; do
     [[ -f "$f" ]] || continue
     name=$(basename "$f")
-
-    patch_file "$f" \
-        'cloudcode-pa.googleapis.com' \
-        'daily-cloudcode-pa.googleapis.com' \
-        "$name: endpoint → daily-cloudcode-pa"
 
     patch_file "$f" \
         'options?.modelProvider?.toLowerCase().includes("google-antigravity")' \
