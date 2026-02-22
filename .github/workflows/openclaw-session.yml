@@ -205,6 +205,20 @@ jobs:
           chmod -R u+rwX "$HOME/.openclaw"
           echo "Permissions fixed for ~/.openclaw"
 
+      # ========== PATCH OPENCLAW ==========
+      - name: Patch OpenClaw (Antigravity models + endpoints)
+        run: |
+          export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+          export PATH="$HOME/.npm-global/bin:$PATH"
+
+          if [ -f "./patch.sh" ]; then
+            echo "Running OpenClaw patch script..."
+            chmod +x ./patch.sh
+            bash ./patch.sh
+          else
+            echo "WARNING: patch.sh not found in repo root — skipping patching"
+          fi
+
       # ========== CLOUDFLARE TUNNEL ==========
       - name: Start Cloudflare Tunnel
         id: tunnel
