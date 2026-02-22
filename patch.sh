@@ -42,7 +42,7 @@ if [[ -z "$PI_AI_DIR" ]]; then
     exit 1
 fi
 DIST="$OPENCLAW_DIR/dist"
-ANTIGRAVITY_VERSION="1.18.3"
+ANTIGRAVITY_VERSION="1.18.4"
 PLATFORM="linux/amd64"
 
 DRY_RUN=false
