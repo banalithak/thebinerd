@@ -92,20 +92,42 @@ $DRY_RUN && echo -e "${YELLOW}DRY RUN MODE — no files will be modified${NC}"
 echo ""
 
 # =============================================================================
-# 1. google-gemini-cli.js — version, platform, endpoint
+# 1. google-gemini-cli.js — version, platform
 # =============================================================================
 GEMINI_CLI="$PI_AI_DIR/dist/providers/google-gemini-cli.js"
 [[ -f "$GEMINI_CLI" ]] || fail "Not found: $GEMINI_CLI"
 
-patch_file "$GEMINI_CLI" \
-    'const DEFAULT_ANTIGRAVITY_VERSION = "1.15.8"' \
-    "const DEFAULT_ANTIGRAVITY_VERSION = \"$ANTIGRAVITY_VERSION\"" \
-    "google-gemini-cli: version 1.15.8 → $ANTIGRAVITY_VERSION"
+# Version: regex match any semver DEFAULT_ANTIGRAVITY_VERSION
+if grep -qP 'const DEFAULT_ANTIGRAVITY_VERSION = "'"$ANTIGRAVITY_VERSION"'"' "$GEMINI_CLI"; then
+    warn "google-gemini-cli: version already $ANTIGRAVITY_VERSION, skipping"
+elif grep -qP 'const DEFAULT_ANTIGRAVITY_VERSION = "\d+\.\d+\.\d+"' "$GEMINI_CLI"; then
+    if $DRY_RUN; then
+        log "[DRY RUN] Would patch: google-gemini-cli version → $ANTIGRAVITY_VERSION"
+    else
+        CURRENT_VER=$(grep -oP 'const DEFAULT_ANTIGRAVITY_VERSION = "\K\d+\.\d+\.\d+' "$GEMINI_CLI")
+        cp "$GEMINI_CLI" "$GEMINI_CLI.prepatch.bak"
+        sed -i "s/const DEFAULT_ANTIGRAVITY_VERSION = \"[0-9]*\.[0-9]*\.[0-9]*\"/const DEFAULT_ANTIGRAVITY_VERSION = \"$ANTIGRAVITY_VERSION\"/" "$GEMINI_CLI"
+        log "google-gemini-cli: version $CURRENT_VER → $ANTIGRAVITY_VERSION"
+    fi
+else
+    warn "google-gemini-cli: DEFAULT_ANTIGRAVITY_VERSION pattern not found, may need manual update"
+fi
 
-patch_file "$GEMINI_CLI" \
-    'antigravity/${version} darwin/arm64' \
-    "antigravity/\${version} $PLATFORM" \
-    "google-gemini-cli: platform darwin/arm64 → $PLATFORM"
+# Platform: regex match any platform string after antigravity/${version}
+if grep -qF 'antigravity/${version} '"$PLATFORM" "$GEMINI_CLI"; then
+    warn "google-gemini-cli: platform already $PLATFORM, skipping"
+elif grep -qP 'antigravity/\$\{version\} \S+/\S+' "$GEMINI_CLI"; then
+    if $DRY_RUN; then
+        log "[DRY RUN] Would patch: google-gemini-cli platform → $PLATFORM"
+    else
+        CURRENT_PLAT=$(grep -oP 'antigravity/\$\{version\} \K\S+/\S+' "$GEMINI_CLI")
+        cp "$GEMINI_CLI" "$GEMINI_CLI.prepatch.bak"
+        sed -i "s|antigravity/\${version} [^ ]*/[^ '\"]*|antigravity/\${version} $PLATFORM|" "$GEMINI_CLI"
+        log "google-gemini-cli: platform $CURRENT_PLAT → $PLATFORM"
+    fi
+else
+    warn "google-gemini-cli: platform pattern not found, may need manual update"
+fi
 
 # NOTE: endpoint left as daily-cloudcode-pa.sandbox.googleapis.com (the working default)
 # Previously we patched this to cloudcode-pa or daily-cloudcode-pa, but the sandbox
