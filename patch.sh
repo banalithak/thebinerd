@@ -156,7 +156,7 @@ with open(path, 'r') as f:
 
 new_models = '''        "gemini-3.1-pro-high": {
             id: "gemini-3.1-pro-high",
-            name: "Gemini 3.1 Pro High (Antigravity)",
+            name: "Gemini 3.1 Pro High",
             api: "google-gemini-cli",
             provider: "google-antigravity",
             baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
@@ -166,57 +166,9 @@ new_models = '''        "gemini-3.1-pro-high": {
             contextWindow: 1000000,
             maxTokens: 65535,
         },
-        "gemini-3.1-pro-low": {
-            id: "gemini-3.1-pro-low",
-            name: "Gemini 3.1 Pro Low (Antigravity)",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-            contextWindow: 1000000,
-            maxTokens: 65535,
-        },
-        "gemini-2.5-pro": {
-            id: "gemini-2.5-pro",
-            name: "Gemini 2.5 Pro (Antigravity)",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-            contextWindow: 1000000,
-            maxTokens: 65535,
-        },
-        "gemini-2.5-flash": {
-            id: "gemini-2.5-flash",
-            name: "Gemini 2.5 Flash (Antigravity)",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 0.5, output: 3, cacheRead: 0.5, cacheWrite: 0 },
-            contextWindow: 1000000,
-            maxTokens: 65535,
-        },
-        "gemini-2.5-flash-lite": {
-            id: "gemini-2.5-flash-lite",
-            name: "Gemini 2.5 Flash Lite (Antigravity)",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: false,
-            input: ["text", "image"],
-            cost: { input: 0.1, output: 0.5, cacheRead: 0.1, cacheWrite: 0 },
-            contextWindow: 1000000,
-            maxTokens: 65535,
-        },
-        "gemini-2.5-flash-thinking": {
-            id: "gemini-2.5-flash-thinking",
-            name: "Gemini 2.5 Flash Thinking (Antigravity)",
+        "gemini-3-flash": {
+            id: "gemini-3-flash",
+            name: "Gemini 3 Flash",
             api: "google-gemini-cli",
             provider: "google-antigravity",
             baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
@@ -228,39 +180,39 @@ new_models = '''        "gemini-3.1-pro-high": {
         },
         "claude-opus-4-6-thinking": {
             id: "claude-opus-4-6-thinking",
-            name: "Claude Opus 4.6 Thinking (Antigravity)",
+            name: "Claude Opus 4.6 Thinking",
             api: "google-gemini-cli",
             provider: "google-antigravity",
             baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: true,
             input: ["text", "image"],
             cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-            contextWindow: 200000,
+            contextWindow: 114000,
             maxTokens: 64000,
         },
-        "claude-sonnet-4-6": {
-            id: "claude-sonnet-4-6",
-            name: "Claude Sonnet 4.6 (Antigravity)",
+        "claude-sonnet-4-6-thinking": {
+            id: "claude-sonnet-4-6-thinking",
+            name: "Claude Sonnet 4.6 Thinking",
+            api: "google-gemini-cli",
+            provider: "google-antigravity",
+            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+            reasoning: true,
+            input: ["text", "image"],
+            cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+            contextWindow: 114000,
+            maxTokens: 64000,
+        },
+        "gpt-oss-120b-medium": {
+            id: "gpt-oss-120b-medium",
+            name: "GPT OSS 120B Medium",
             api: "google-gemini-cli",
             provider: "google-antigravity",
             baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
             reasoning: false,
             input: ["text", "image"],
             cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-            contextWindow: 200000,
-            maxTokens: 64000,
-        },
-        "gpt-oss-120b-medium": {
-            id: "gpt-oss-120b-medium",
-            name: "GPT-OSS 120B Medium (Antigravity)",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 2, output: 8, cacheRead: 0.2, cacheWrite: 0 },
-            contextWindow: 114000,
-            maxTokens: 32768,
+            contextWindow: 1000000,
+            maxTokens: 65536,
         },
 '''
 
@@ -301,7 +253,7 @@ for f in $ALL_DIST_FILES; do
 done
 
 # =============================================================================
-# 4. openclaw.json — ensure all models are in allowlist
+# 4. openclaw.json — ensure correct models in allowlist, remove deprecated ones
 # =============================================================================
 OPENCLAW_JSON="$HOME/.openclaw/openclaw.json"
 
@@ -316,23 +268,27 @@ path = "$OPENCLAW_JSON"
 with open(path) as f:
     config = json.load(f)
 
-models_to_add = [
+models_to_keep = [
     "google-antigravity/gemini-3.1-pro-high",
-    "google-antigravity/gemini-3.1-pro-low",
-    "google-antigravity/gemini-3-pro-high",
     "google-antigravity/gemini-3-flash",
-    "google-antigravity/gemini-2.5-pro",
-    "google-antigravity/gemini-2.5-flash",
-    "google-antigravity/gemini-2.5-flash-lite",
-    "google-antigravity/gemini-2.5-flash-thinking",
     "google-antigravity/claude-opus-4-6-thinking",
-    "google-antigravity/claude-sonnet-4-6",
+    "google-antigravity/claude-sonnet-4-6-thinking",
     "google-antigravity/gpt-oss-120b-medium",
 ]
 
 existing = config.get("agents", {}).get("defaults", {}).get("models", {})
+
+# Remove deprecated google-antigravity models not in the keep list
+removed = 0
+deprecated_keys = [k for k in list(existing.keys()) if k.startswith("google-antigravity/") and k not in models_to_keep]
+for key in deprecated_keys:
+    del existing[key]
+    print(f"  removed deprecated model: {key}")
+    removed += 1
+
+# Add models that should be present
 added = 0
-for m in models_to_add:
+for m in models_to_keep:
     if m not in existing:
         existing[m] = {}
         added += 1
@@ -342,7 +298,7 @@ config.setdefault("agents", {}).setdefault("defaults", {})["models"] = existing
 with open(path, "w") as f:
     json.dump(config, f, indent=2)
 
-print(f"openclaw.json: added {added} missing models to allowlist")
+print(f"openclaw.json allowlist updated (added {added}, removed {removed} deprecated)")
 PYEOF
         log "openclaw.json allowlist updated"
     fi
@@ -366,15 +322,9 @@ if [[ ! -f "$MODELS_JSON" ]]; then
     "google-antigravity": {
       "modelOverrides": {
         "gemini-3.1-pro-high": {},
-        "gemini-3.1-pro-low": {},
-        "gemini-3-pro-high": {},
         "gemini-3-flash": {},
-        "gemini-2.5-pro": {},
-        "gemini-2.5-flash": {},
-        "gemini-2.5-flash-lite": {},
-        "gemini-2.5-flash-thinking": {},
         "claude-opus-4-6-thinking": {},
-        "claude-sonnet-4-6": {},
+        "claude-sonnet-4-6-thinking": {},
         "gpt-oss-120b-medium": {}
       }
     }
