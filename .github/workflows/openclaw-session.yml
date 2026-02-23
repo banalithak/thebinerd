@@ -118,6 +118,7 @@ jobs:
           export PATH="$HOME/.npm-global/bin:$PATH"
 
           echo "Installing Playwright with Chromium for OpenClaw browser tool..."
+          npm install -g playwright
           npx playwright install --with-deps chromium
           echo "Playwright + Chromium installed"
 
