@@ -88,6 +88,13 @@ jobs:
           path: ~/.npm-global
           key: npm-global-openclaw-${{ steps.session.outputs.OPENCLAW_CACHE_VERSION }}-${{ runner.os }}
 
+      - name: Restore Playwright browsers cache
+        id: cache-playwright
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.playwright-browsers
+          key: playwright-browsers-v1-${{ runner.os }}
+
       # ========== OPENCLAW SETUP ==========
       - name: Install OpenClaw
         run: |
@@ -116,11 +123,33 @@ jobs:
         run: |
           export NPM_CONFIG_PREFIX="$HOME/.npm-global"
           export PATH="$HOME/.npm-global/bin:$PATH"
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.playwright-browsers"
 
-          echo "Installing Playwright with Chromium for OpenClaw browser tool..."
-          npm install -g playwright
-          npx playwright install --with-deps chromium
-          echo "Playwright + Chromium installed"
+          # Install Playwright npm package if not already cached
+          if [ ! -f "$HOME/.npm-global/lib/node_modules/playwright/cli.js" ]; then
+            echo "Installing Playwright npm package..."
+            npm install -g playwright
+          else
+            echo "Playwright npm package already present (cached)"
+          fi
+
+          # Install Chromium browser binary if not cached
+          if [ "${{ steps.cache-playwright.outputs.cache-hit }}" = "true" ]; then
+            # Validate cached browser exists
+            if ls "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* 1>/dev/null 2>&1; then
+              echo "Playwright Chromium restored from cache"
+              # Still install system deps (not cached - they're OS packages)
+              npx playwright install-deps chromium 2>/dev/null || true
+            else
+              echo "WARNING: Cache hit but no chromium directory found, reinstalling..."
+              npx playwright install --with-deps chromium
+            fi
+          else
+            echo "Installing Playwright Chromium browser..."
+            npx playwright install --with-deps chromium
+          fi
+
+          echo "Playwright + Chromium ready at: $PLAYWRIGHT_BROWSERS_PATH"
 
       - name: Configure OpenClaw
         env:
@@ -259,6 +288,7 @@ jobs:
           export PATH="$HOME/.npm-global/bin:$PATH"
           export OPENCLAW_STATE_DIR="$HOME/.openclaw"
           export OPENCLAW_WORKSPACE="$HOME/.openclaw/workspace"
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.playwright-browsers"
 
           # Stealth: use new headless mode (harder to detect than legacy headless)
           export PLAYWRIGHT_CHROMIUM_USE_HEADLESS_NEW=1
@@ -285,6 +315,7 @@ jobs:
         run: |
           export NPM_CONFIG_PREFIX="$HOME/.npm-global"
           export PATH="$HOME/.npm-global/bin:$PATH"
+          export PLAYWRIGHT_BROWSERS_PATH="$HOME/.playwright-browsers"
 
           echo "Starting OpenClaw managed browser (headless, no-sandbox)..."
 
@@ -371,6 +402,7 @@ jobs:
           LAST_SAVE=$(date +%s)
           CHAIN_TRIGGERED=false
           FAIL_COUNT=0
+          BROWSER_FAIL_COUNT=0
           LOOP_COUNT=0
 
           NOW=$(date +%s)
@@ -497,16 +529,50 @@ jobs:
 
             # Check if OpenClaw managed browser is still reachable
             if ! curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
-              echo "  WARNING: Browser CDP not reachable, attempting restart..."
-              export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-              export PATH="$HOME/.npm-global/bin:$PATH"
-              openclaw browser --browser-profile openclaw start 2>&1 || true
-              sleep 5
-              if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
-                echo "  Browser restarted successfully"
-              else
-                echo "  WARNING: Browser restart may have failed (gateway will retry on next tool call)"
+              BROWSER_FAIL_COUNT=$((BROWSER_FAIL_COUNT + 1))
+              
+              if [ "$BROWSER_FAIL_COUNT" -le 3 ]; then
+                echo "  WARNING: Browser CDP not reachable (attempt $BROWSER_FAIL_COUNT/3), attempting restart..."
+                
+                # Try via gateway HTTP API first
+                RESTARTED=false
+                if curl -sf -X POST "http://127.0.0.1:${{ env.OPENCLAW_PORT }}/browser/start?profile=openclaw" \
+                  -H "Authorization: Bearer openclaw" -o /dev/null 2>&1; then
+                  sleep 8
+                  if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
+                    echo "  Browser restarted successfully via gateway API"
+                    BROWSER_FAIL_COUNT=0
+                    RESTARTED=true
+                  else
+                    echo "  Gateway accepted start request but CDP still not reachable"
+                  fi
+                else
+                  echo "  Gateway API start request failed"
+                fi
+                
+                # Fallback: try CLI directly
+                if [ "$RESTARTED" = "false" ]; then
+                  export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+                  export PATH="$HOME/.npm-global/bin:$PATH"
+                  export PLAYWRIGHT_BROWSERS_PATH="$HOME/.playwright-browsers"
+                  openclaw browser --browser-profile openclaw start 2>&1 || true
+                  sleep 8
+                  if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
+                    echo "  Browser restarted successfully via CLI"
+                    BROWSER_FAIL_COUNT=0
+                  else
+                    echo "  WARNING: Browser restart via CLI also failed"
+                  fi
+                fi
+              elif [ "$BROWSER_FAIL_COUNT" -eq 4 ]; then
+                echo "  Browser CDP failed 3 restart attempts - giving up automatic restarts."
+                echo "  The gateway will auto-start the browser on the next browser tool call."
               fi
+            else
+              if [ "$BROWSER_FAIL_COUNT" -gt 0 ]; then
+                echo "  Browser CDP confirmed reachable (reset fail counter from $BROWSER_FAIL_COUNT)"
+              fi
+              BROWSER_FAIL_COUNT=0
             fi
 
             # Periodic secret save
@@ -666,4 +732,12 @@ jobs:
         with:
           path: ~/.npm-global
           key: npm-global-openclaw-${{ steps.session.outputs.OPENCLAW_CACHE_VERSION }}-${{ runner.os }}
+        continue-on-error: true
+
+      - name: Save Playwright browsers cache
+        if: ${{ always() && steps.cache-playwright.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.playwright-browsers
+          key: playwright-browsers-v1-${{ runner.os }}
         continue-on-error: true
