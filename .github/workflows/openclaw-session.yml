@@ -532,37 +532,17 @@ jobs:
               BROWSER_FAIL_COUNT=$((BROWSER_FAIL_COUNT + 1))
               
               if [ "$BROWSER_FAIL_COUNT" -le 3 ]; then
-                echo "  WARNING: Browser CDP not reachable (attempt $BROWSER_FAIL_COUNT/3), attempting restart..."
-                
-                # Try via gateway HTTP API first
-                RESTARTED=false
-                if curl -sf -X POST "http://127.0.0.1:${{ env.OPENCLAW_PORT }}/browser/start?profile=openclaw" \
-                  -H "Authorization: Bearer openclaw" -o /dev/null 2>&1; then
-                  sleep 8
-                  if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
-                    echo "  Browser restarted successfully via gateway API"
-                    BROWSER_FAIL_COUNT=0
-                    RESTARTED=true
-                  else
-                    echo "  Gateway accepted start request but CDP still not reachable"
-                  fi
+                echo "  WARNING: Browser CDP not reachable (attempt $BROWSER_FAIL_COUNT/3), attempting restart via CLI..."
+                export NPM_CONFIG_PREFIX="$HOME/.npm-global"
+                export PATH="$HOME/.npm-global/bin:$PATH"
+                export PLAYWRIGHT_BROWSERS_PATH="$HOME/.playwright-browsers"
+                openclaw browser --browser-profile openclaw start 2>&1 || true
+                sleep 10
+                if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
+                  echo "  Browser restarted successfully via CLI"
+                  BROWSER_FAIL_COUNT=0
                 else
-                  echo "  Gateway API start request failed"
-                fi
-                
-                # Fallback: try CLI directly
-                if [ "$RESTARTED" = "false" ]; then
-                  export NPM_CONFIG_PREFIX="$HOME/.npm-global"
-                  export PATH="$HOME/.npm-global/bin:$PATH"
-                  export PLAYWRIGHT_BROWSERS_PATH="$HOME/.playwright-browsers"
-                  openclaw browser --browser-profile openclaw start 2>&1 || true
-                  sleep 8
-                  if curl -sf http://127.0.0.1:18800/json/version > /dev/null 2>&1; then
-                    echo "  Browser restarted successfully via CLI"
-                    BROWSER_FAIL_COUNT=0
-                  else
-                    echo "  WARNING: Browser restart via CLI also failed"
-                  fi
+                  echo "  WARNING: Browser restart attempt $BROWSER_FAIL_COUNT failed"
                 fi
               elif [ "$BROWSER_FAIL_COUNT" -eq 4 ]; then
                 echo "  Browser CDP failed 3 restart attempts - giving up automatic restarts."
