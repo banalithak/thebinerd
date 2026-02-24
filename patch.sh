@@ -166,30 +166,6 @@ new_models = '''        "gemini-3.1-pro-high": {
             contextWindow: 1000000,
             maxTokens: 65535,
         },
-        "gemini-3-flash": {
-            id: "gemini-3-flash",
-            name: "Gemini 3 Flash",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 0.5, output: 3, cacheRead: 0.5, cacheWrite: 0 },
-            contextWindow: 1000000,
-            maxTokens: 65535,
-        },
-        "claude-opus-4-6-thinking": {
-            id: "claude-opus-4-6-thinking",
-            name: "Claude Opus 4.6 Thinking",
-            api: "google-gemini-cli",
-            provider: "google-antigravity",
-            baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-            reasoning: true,
-            input: ["text", "image"],
-            cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-            contextWindow: 114000,
-            maxTokens: 64000,
-        },
         "claude-sonnet-4-6-thinking": {
             id: "claude-sonnet-4-6-thinking",
             name: "Claude Sonnet 4.6 Thinking",
@@ -270,8 +246,6 @@ with open(path) as f:
 
 models_to_keep = [
     "google-antigravity/gemini-3.1-pro-high",
-    "google-antigravity/gemini-3-flash",
-    "google-antigravity/claude-opus-4-6-thinking",
     "google-antigravity/claude-sonnet-4-6-thinking",
     "google-antigravity/gpt-oss-120b-medium",
 ]
@@ -322,8 +296,6 @@ if [[ ! -f "$MODELS_JSON" ]]; then
     "google-antigravity": {
       "modelOverrides": {
         "gemini-3.1-pro-high": {},
-        "gemini-3-flash": {},
-        "claude-opus-4-6-thinking": {},
         "claude-sonnet-4-6-thinking": {},
         "gpt-oss-120b-medium": {}
       }
