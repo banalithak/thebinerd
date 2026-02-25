@@ -25,7 +25,7 @@ env:
 
 concurrency:
   group: openclaw-session
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   openclaw-session:
