@@ -151,41 +151,16 @@ jobs:
 
           echo "Playwright + Chromium ready at: $PLAYWRIGHT_BROWSERS_PATH"
 
-      - name: Configure OpenClaw
-        env:
-          OPENCLAW_CONFIG: ${{ secrets.OPENCLAW_CONFIG }}
-          OPENCLAW_AUTH_PROFILES: ${{ secrets.OPENCLAW_AUTH_PROFILES }}
+      # ========== STATE RESTORE (before config so secrets always win) ==========
+      - name: Create OpenClaw directories
         run: |
           OPENCLAW_DIR="$HOME/.openclaw"
           mkdir -p "$OPENCLAW_DIR"
           mkdir -p "$OPENCLAW_DIR/workspace"
           mkdir -p "$OPENCLAW_DIR/agents/main/agent"
+          echo "OpenClaw directories created"
 
-          # Inject openclaw.json from secret
-          if [ -n "$OPENCLAW_CONFIG" ]; then
-            # Fix paths: replace any Windows user paths with Linux home, then convert remaining backslashes to forward slashes in paths
-            CONFIG=$(echo "$OPENCLAW_CONFIG" | sed "s|C:\\\\\\\\Users\\\\\\\\[^\\\\\"]*|$HOME|g" | sed "s|C:/Users/[^/\"]*|$HOME|g")
-            # Convert Windows backslash paths to forward slashes (e.g. \\.openclaw\\workspace -> /.openclaw/workspace)
-            CONFIG=$(echo "$CONFIG" | sed 's|\\\\|/|g')
-            echo "$CONFIG" > "$OPENCLAW_DIR/openclaw.json"
-            echo "Injected openclaw.json from secret (paths fixed to $HOME)"
-          else
-            echo "ERROR: No OPENCLAW_CONFIG secret found"
-            exit 1
-          fi
-
-          # Inject auth-profiles.json from secret
-          if [ -n "$OPENCLAW_AUTH_PROFILES" ]; then
-            echo "$OPENCLAW_AUTH_PROFILES" > "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json"
-            echo "Injected auth-profiles.json from secret"
-          else
-            echo "WARNING: No OPENCLAW_AUTH_PROFILES secret found"
-          fi
-
-          echo "OpenClaw configured"
-
-      # ========== WORKSPACE RESTORE ==========
-      - name: Find previous workspace artifact
+      - name: Find previous state artifact
         id: find-artifact
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
@@ -212,23 +187,55 @@ jobs:
 
           if [ -n "$ARTIFACT_INFO" ] && [ "$ARTIFACT_INFO" != "null null" ]; then
             RUN_ID=$(echo "$ARTIFACT_INFO" | awk '{print $2}')
-            echo "Found workspace artifact from run: $RUN_ID"
+            echo "Found state artifact from run: $RUN_ID"
             echo "RUN_ID=$RUN_ID" >> "$GITHUB_OUTPUT"
             echo "FOUND=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No previous workspace artifact found"
+            echo "No previous state artifact found"
             echo "FOUND=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Restore workspace from artifact
+      - name: Restore state from artifact
         if: steps.find-artifact.outputs.FOUND == 'true'
         uses: actions/download-artifact@v4
         with:
           name: openclaw-workspace
-          path: ~/.openclaw/workspace
+          path: ~/.openclaw
           github-token: ${{ secrets.GH_PAT }}
           run-id: ${{ steps.find-artifact.outputs.RUN_ID }}
         continue-on-error: true
+
+      # ========== CONFIGURE (after restore so secrets always overwrite artifact) ==========
+      - name: Configure OpenClaw
+        env:
+          OPENCLAW_CONFIG: ${{ secrets.OPENCLAW_CONFIG }}
+          OPENCLAW_AUTH_PROFILES: ${{ secrets.OPENCLAW_AUTH_PROFILES }}
+        run: |
+          OPENCLAW_DIR="$HOME/.openclaw"
+
+          # Inject openclaw.json from secret (overwrites any stale copy from artifact)
+          if [ -n "$OPENCLAW_CONFIG" ]; then
+            # Fix paths: replace any Windows user paths with Linux home, then convert remaining backslashes to forward slashes in paths
+            CONFIG=$(echo "$OPENCLAW_CONFIG" | sed "s|C:\\\\\\\\Users\\\\\\\\[^\\\\\"]*|$HOME|g" | sed "s|C:/Users/[^/\"]*|$HOME|g")
+            # Convert Windows backslash paths to forward slashes (e.g. \\.openclaw\\workspace -> /.openclaw/workspace)
+            CONFIG=$(echo "$CONFIG" | sed 's|\\\\|/|g')
+            echo "$CONFIG" > "$OPENCLAW_DIR/openclaw.json"
+            echo "Injected openclaw.json from secret (paths fixed to $HOME)"
+          else
+            echo "ERROR: No OPENCLAW_CONFIG secret found"
+            exit 1
+          fi
+
+          # Inject auth-profiles.json from secret (overwrites any stale copy from artifact)
+          if [ -n "$OPENCLAW_AUTH_PROFILES" ]; then
+            mkdir -p "$OPENCLAW_DIR/agents/main/agent"
+            echo "$OPENCLAW_AUTH_PROFILES" > "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json"
+            echo "Injected auth-profiles.json from secret"
+          else
+            echo "WARNING: No OPENCLAW_AUTH_PROFILES secret found"
+          fi
+
+          echo "OpenClaw configured"
 
       - name: Fix OpenClaw directory permissions
         run: |
@@ -612,44 +619,90 @@ jobs:
           echo "Secrets saved"
         continue-on-error: true
 
-      - name: Clean workspace before upload
+      - name: Clean state before upload
         if: always()
         run: |
-          WORKSPACE="$HOME/.openclaw/workspace"
+          OPENCLAW_DIR="$HOME/.openclaw"
 
-          if [ ! -d "$WORKSPACE" ]; then
-            echo "No workspace to clean"
+          if [ ! -d "$OPENCLAW_DIR" ]; then
+            echo "No state to clean"
             exit 0
           fi
 
-          echo "Cleaning transient/large files from workspace before upload..."
+          echo "Cleaning transient/large files from state dir before upload..."
 
-          # Remove known transient directories
-          find "$WORKSPACE" -type d \( -name "node_modules" -o -name "__pycache__" -o -name ".venv" -o -name "venv" -o -name ".cache" -o -name "cache" -o -name "tmp" -o -name "temp" -o -name "downloads" \) -exec rm -rf {} + 2>/dev/null || true
+          # Remove secrets (handled via GitHub secrets, must not leak into artifact)
+          rm -f "$OPENCLAW_DIR/openclaw.json"
+          rm -f "$OPENCLAW_DIR/agents/main/agent/auth-profiles.json"
+          echo "Removed secret files from state dir"
+
+          # Remove browser extension files (reinstalled each session by patch)
+          rm -rf "$OPENCLAW_DIR/browser" 2>/dev/null || true
+
+          # Remove known transient directories (workspace and elsewhere)
+          find "$OPENCLAW_DIR" -type d \( -name "node_modules" -o -name "__pycache__" -o -name ".venv" -o -name "venv" -o -name ".cache" -o -name "cache" -o -name "tmp" -o -name "temp" -o -name "downloads" \) -exec rm -rf {} + 2>/dev/null || true
 
           # Remove large/binary files
-          find "$WORKSPACE" -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.avi" -o -name "*.mov" -o -name "*.webm" -o -name "*.mp3" -o -name "*.wav" -o -name "*.flac" -o -name "*.zip" -o -name "*.tar" -o -name "*.gz" -o -name "*.7z" -o -name "*.rar" -o -name "*.iso" -o -name "*.img" -o -name "*.exe" -o -name "*.msi" -o -name "*.bin" -o -name "*.dat" -o -name "*.psd" -o -name "*.raw" \) -delete 2>/dev/null || true
+          find "$OPENCLAW_DIR" -type f \( -name "*.mp4" -o -name "*.mkv" -o -name "*.avi" -o -name "*.mov" -o -name "*.webm" -o -name "*.mp3" -o -name "*.wav" -o -name "*.flac" -o -name "*.zip" -o -name "*.tar" -o -name "*.gz" -o -name "*.7z" -o -name "*.rar" -o -name "*.iso" -o -name "*.img" -o -name "*.exe" -o -name "*.msi" -o -name "*.bin" -o -name "*.dat" -o -name "*.psd" -o -name "*.raw" \) -delete 2>/dev/null || true
 
-          # Remove files larger than 50MB
-          find "$WORKSPACE" -type f -size +50M -delete 2>/dev/null || true
+          # Remove files larger than 10MB
+          find "$OPENCLAW_DIR" -type f -size +10M -delete 2>/dev/null || true
+
+          # Remove lock/pid files
+          find "$OPENCLAW_DIR" -type f \( -name "*.lock" -o -name "*.pid" \) -delete 2>/dev/null || true
 
           # Remove empty directories
-          find "$WORKSPACE" -type d -empty -delete 2>/dev/null || true
+          find "$OPENCLAW_DIR" -type d -empty -delete 2>/dev/null || true
+
+          # ---- Enforce 400MB hard budget (artifact limit is 500MB) ----
+          MAX_MB=400
+          CURRENT_KB=$(du -sk "$OPENCLAW_DIR" 2>/dev/null | cut -f1)
+          CURRENT_MB=$((CURRENT_KB / 1024))
+          echo "State dir size after cleanup: ${CURRENT_MB}MB (budget: ${MAX_MB}MB)"
+
+          if [ "$CURRENT_MB" -gt "$MAX_MB" ]; then
+            echo "WARNING: State dir exceeds ${MAX_MB}MB budget, pruning largest files..."
+
+            # Delete largest files first until under budget
+            while [ "$CURRENT_MB" -gt "$MAX_MB" ]; do
+              LARGEST=$(find "$OPENCLAW_DIR" -type f -printf '%s %p\n' 2>/dev/null | sort -rn | head -1)
+              if [ -z "$LARGEST" ]; then
+                echo "No more files to prune!"
+                break
+              fi
+              LARGEST_PATH=$(echo "$LARGEST" | cut -d' ' -f2-)
+              LARGEST_SIZE=$(echo "$LARGEST" | cut -d' ' -f1)
+              LARGEST_MB=$((LARGEST_SIZE / 1048576))
+              echo "  Pruning (${LARGEST_MB}MB): $LARGEST_PATH"
+              rm -f "$LARGEST_PATH"
+              CURRENT_KB=$(du -sk "$OPENCLAW_DIR" 2>/dev/null | cut -f1)
+              CURRENT_MB=$((CURRENT_KB / 1024))
+            done
+
+            echo "State dir after pruning: ${CURRENT_MB}MB"
+
+            # Clean up empty dirs left by pruning
+            find "$OPENCLAW_DIR" -type d -empty -delete 2>/dev/null || true
+          fi
 
           # Summary
-          FILE_COUNT=$(find "$WORKSPACE" -type f 2>/dev/null | wc -l)
-          SIZE=$(du -sh "$WORKSPACE" 2>/dev/null | cut -f1)
-          echo "Workspace ready for upload: $FILE_COUNT files, $SIZE"
+          FILE_COUNT=$(find "$OPENCLAW_DIR" -type f 2>/dev/null | wc -l)
+          SIZE=$(du -sh "$OPENCLAW_DIR" 2>/dev/null | cut -f1)
+          echo "State dir ready for upload: $FILE_COUNT files, $SIZE"
 
-      - name: Upload workspace artifact
+      - name: Upload state artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: openclaw-workspace
-          path: ~/.openclaw/workspace
+          path: |
+            ~/.openclaw/
+            !~/.openclaw/openclaw.json
+            !~/.openclaw/agents/main/agent/auth-profiles.json
           retention-days: 90
           if-no-files-found: ignore
           overwrite: true
+          include-hidden-files: true
 
       - name: Trigger next session (fallback)
         if: always()
